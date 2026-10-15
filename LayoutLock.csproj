@@ -14,11 +14,31 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- The release workflow overrides Version from the git tag (v1.2.3 -> 1.2.3). -->
+    <Version>1.0.0</Version>
+    <Product>LayoutLock</Product>
+    <AssemblyTitle>LayoutLock</AssemblyTitle>
+    <Description>Saves and restores window positions across hibernate when switching between equivalent multi-monitor setups.</Description>
+    <Authors>Aleksey Baryshnikov</Authors>
+    <Company>Aleksey Baryshnikov</Company>
+    <Copyright>Copyright (c) 2026 Aleksey Baryshnikov</Copyright>
+    <RepositoryUrl>https://github.com/ab-4797DD45889F/LayoutLock</RepositoryUrl>
+  </PropertyGroup>
+
+  <!-- Release build: dotnet publish -c Release -r win-x64 -p:ReleaseSingleFile=true -->
+  <PropertyGroup Condition="'$(ReleaseSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
-    <!-- The tray icon is loaded from here because, run through dotnet.exe, the exe's own icon is never used. -->
+    <!-- Embedded rather than loose: run through dotnet.exe the exe's own icon is never used,
+         and a single-file release has no loose files at all. -->
     <EmbeddedResource Include="app.ico" LogicalName="LayoutLock.app.ico" />
-    <!-- Loose copy for the notification identity's IconUri, which must be a file path. -->
-    <None Include="app.ico" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="tools/**" />
     <EmbeddedResource Remove="tools/**" />
     <None Remove="tools/**" />

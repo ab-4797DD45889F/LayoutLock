@@ -1,0 +1,89 @@
+name: Release
+
+# Push a tag like v1.2.3 to build, (optionally) sign and publish a GitHub Release.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Version from tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Publish self-contained single-file exe
+        shell: pwsh
+        run: dotnet publish LayoutLock.csproj -c Release -r win-x64 -p:ReleaseSingleFile=true -p:Version=$env:VERSION -o out
+
+      - name: Upload unsigned exe
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: LayoutLock-unsigned
+          path: out/LayoutLock.exe
+          if-no-files-found: error
+
+      # Skipped until SignPath is set up: see "Code signing" in README.md.
+      - name: Sign with SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Release signing requests need a manual approval in SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+
+      - name: Collect release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = if (Test-Path signed/LayoutLock.exe) { "signed/LayoutLock.exe" } else { "out/LayoutLock.exe" }
+          Copy-Item $exe dist/LayoutLock.exe
+          $hash = (Get-FileHash -Algorithm SHA256 dist/LayoutLock.exe).Hash
+          "$hash  LayoutLock.exe" | Set-Content dist/LayoutLock.exe.sha256 -Encoding ascii
+          ./packaging/winget/render.ps1 -Version $env:VERSION -InstallerPath dist/LayoutLock.exe -OutputRoot winget | Out-Null
+          Compress-Archive -Path winget/manifests -DestinationPath "dist/winget-manifests-$env:VERSION.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/LayoutLock.exe
+            dist/LayoutLock.exe.sha256
+            dist/winget-manifests-${{ env.VERSION }}.zip
+          generate_release_notes: true
+
+  # Opens the winget-pkgs pull request for new versions. Only works once the first version has been
+  # accepted into winget-pkgs; enable with repository variable WINGET_AUTO_SUBMIT=true and secret WINGET_TOKEN.
+  winget:
+    needs: release
+    if: vars.WINGET_AUTO_SUBMIT == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: AlekseyBaryshnikov.LayoutLock
+          installers-regex: 'LayoutLock\.exe$'
+          release-tag: ${{ github.ref_name }}
+          token: ${{ secrets.WINGET_TOKEN }}

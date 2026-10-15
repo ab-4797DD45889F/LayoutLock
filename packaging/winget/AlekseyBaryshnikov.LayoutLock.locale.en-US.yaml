@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+# Template: {{VERSION}} is filled in by packaging/winget/render.ps1.
+
+PackageIdentifier: AlekseyBaryshnikov.LayoutLock
+PackageVersion: {{VERSION}}
+PackageLocale: en-US
+Publisher: Aleksey Baryshnikov
+PublisherUrl: https://github.com/ab-4797DD45889F
+PublisherSupportUrl: https://github.com/ab-4797DD45889F/LayoutLock/issues
+Author: Aleksey Baryshnikov
+PackageName: LayoutLock
+PackageUrl: https://github.com/ab-4797DD45889F/LayoutLock
+License: MIT
+LicenseUrl: https://github.com/ab-4797DD45889F/LayoutLock/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Aleksey Baryshnikov
+ShortDescription: Restores window positions after hibernate when you move between two equivalent multi-monitor setups.
+Description: |-
+  LayoutLock is a small tray app for laptops that dock to different monitors at different places (e.g. office and home).
+  It saves every window's position when Windows hibernates or sleeps and puts the windows back on the matching monitor
+  after resume. Monitors are matched by their left-to-right order, so equivalent displays at both locations map onto
+  each other even though Windows sees them as different hardware. Maximized, minimized and snapped windows are restored,
+  and every restore shows a notification.
+Moniker: layoutlock
+Tags:
+- window-manager
+- multi-monitor
+- monitors
+- window-layout
+- hibernate
+- tray
+ReleaseNotesUrl: https://github.com/ab-4797DD45889F/LayoutLock/releases/tag/v{{VERSION}}
+InstallationNotes: Run "layoutlock install" once to start the tray agent and launch it automatically at logon. Run "layoutlock uninstall" before uninstalling the package.
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

@@ -50,7 +50,7 @@ internal static class NotificationIdentity
             using (var key = Registry.CurrentUser.CreateSubKey(RegistryPath))
             {
                 key.SetValue("DisplayName", "LayoutLock");
-                key.SetValue("IconUri", Path.Combine(AppContext.BaseDirectory, "app.ico"));
+                key.SetValue("IconUri", WriteIconFile());
             }
             NativeMethods.SetCurrentProcessExplicitAppUserModelID(AppId);
         }
@@ -61,6 +61,17 @@ internal static class NotificationIdentity
     }
 
     public static void Remove() => Registry.CurrentUser.DeleteSubKeyTree(RegistryPath, throwOnMissingSubKey: false);
+
+    // IconUri must be a file path, and the single-file release has no loose files next to the exe.
+    private static string WriteIconFile()
+    {
+        var path = Path.Combine(Storage.Folder, "app.ico");
+        Directory.CreateDirectory(Storage.Folder);
+        using var resource = typeof(NotificationIdentity).Assembly.GetManifestResourceStream("LayoutLock.app.ico")!;
+        using var file = File.Create(path);
+        resource.CopyTo(file);
+        return path;
+    }
 }
 
 internal static class Autostart
