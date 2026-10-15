@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256">
+  <!-- Source design for app.ico; regenerate the .ico with tools/IconGenerator (same geometry). -->
+  <rect x="3" y="5" width="50" height="42" rx="5" fill="#23304A"/>
+  <rect x="7" y="9" width="20" height="34" rx="2" fill="#5AA2FF"/>
+  <rect x="30" y="9" width="19" height="16" rx="2" fill="#A98BFF"/>
+  <rect x="30" y="27" width="19" height="16" rx="2" fill="#3DD39A"/>
+  <path d="M43 40v-5a6 6 0 0 1 12 0v5" fill="none" stroke="#0B1B3A" stroke-width="7.5" stroke-linecap="round"/>
+  <path d="M43 40v-5a6 6 0 0 1 12 0v5" fill="none" stroke="#F5B400" stroke-width="3.6" stroke-linecap="round"/>
+  <rect x="37" y="39" width="24" height="20" rx="4" fill="#F5B400" stroke="#0B1B3A" stroke-width="2"/>
+  <circle cx="49" cy="47" r="2.6" fill="#0B1B3A"/>
+  <rect x="48" y="48" width="2" height="6" rx="1" fill="#0B1B3A"/>
+</svg>

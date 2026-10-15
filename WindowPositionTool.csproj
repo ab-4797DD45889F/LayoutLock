@@ -11,6 +11,15 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>WindowPositionTool</AssemblyName>
     <RootNamespace>WindowPositionTool</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The tray icon is loaded from here because, run through dotnet.exe, the exe's own icon is never used. -->
+    <EmbeddedResource Include="app.ico" LogicalName="WindowPositionTool.app.ico" />
+    <Compile Remove="tools/**" />
+    <EmbeddedResource Remove="tools/**" />
+    <None Remove="tools/**" />
+  </ItemGroup>
 
 </Project>

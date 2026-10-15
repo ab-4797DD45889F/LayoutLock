@@ -46,7 +46,7 @@ internal sealed class TrayAgent : ApplicationContext
 
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Text = "Window Position Tool",
             ContextMenuStrip = menu,
             Visible = true,
@@ -243,6 +243,13 @@ internal sealed class TrayAgent : ApplicationContext
         if (text.Length > 250)
             text = text[..247] + "...";
         _ui.Post(_ => _icon.ShowBalloonTip(10_000, title, text, icon), null);
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        using var stream = typeof(TrayAgent).Assembly.GetManifestResourceStream("WindowPositionTool.app.ico");
+        // Ask for the tray's own size (16/20/24/32 px depending on DPI) so Windows doesn't downscale a big frame.
+        return stream is null ? SystemIcons.Application : new Icon(stream, SystemInformation.SmallIconSize);
     }
 
     private static void OpenLog()

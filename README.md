@@ -149,3 +149,17 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
 | `Monitors.cs` | Monitor enumeration ordered left-to-right, coordinate conversion. |
 | `Storage.cs` | Data/log paths, logon autostart registration. |
 | `NativeMethods.cs` | Win32 P/Invoke declarations. |
+| `icon.svg` | Source design of the app icon (snap layout + padlock). |
+| `app.ico` | Generated multi-size icon (16–256 px): exe icon and, embedded, the tray icon. |
+| `tools/IconGenerator/` | Renders `app.ico` from the same geometry as `icon.svg`. |
+
+### Regenerating the icon
+
+After changing the design, update both `icon.svg` and the drawing code in `tools/IconGenerator/Program.cs`, then:
+
+```
+dotnet build tools\IconGenerator -c Release
+dotnet tools\IconGenerator\bin\Release\net8.0-windows\IconGenerator.dll app.ico
+```
+
+(`dotnet run` would start the generator's freshly built exe, which the Defender rule blocks.)
