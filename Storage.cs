@@ -34,6 +34,35 @@ internal static class Storage
     }
 }
 
+/// <summary>
+/// Windows names a notification after the sending process, which is ".NET Host" when run through dotnet.exe.
+/// An explicit AppUserModelID registered with a display name and icon makes it show as "LayoutLock" instead.
+/// </summary>
+internal static class NotificationIdentity
+{
+    public const string AppId = "LayoutLock";
+    private const string RegistryPath = @"Software\Classes\AppUserModelId\" + AppId;
+
+    public static void Apply()
+    {
+        try
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(RegistryPath))
+            {
+                key.SetValue("DisplayName", "LayoutLock");
+                key.SetValue("IconUri", Path.Combine(AppContext.BaseDirectory, "app.ico"));
+            }
+            NativeMethods.SetCurrentProcessExplicitAppUserModelID(AppId);
+        }
+        catch (Exception ex)
+        {
+            Storage.Log($"Could not set notification identity: {ex.Message}");
+        }
+    }
+
+    public static void Remove() => Registry.CurrentUser.DeleteSubKeyTree(RegistryPath, throwOnMissingSubKey: false);
+}
+
 internal static class Autostart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

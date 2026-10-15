@@ -233,7 +233,9 @@ internal sealed class TrayAgent : ApplicationContext
             ? "Everything was already in place."
             : string.Join(", ", apps.Take(6)) + (apps.Count > 6 ? $" +{apps.Count - 6} more" : "");
 
-        var text = $"{result.Summary}.\n{appsLine}\nSnapshot: {snapshot.SavedAt:g} ({snapshot.Reason})";
+        var text = $"Moved {result.MovedApps.Count} of {result.Restored} window(s)\n" +
+                   $"Skipped {result.Skipped}, failed {result.Failed}\n" +
+                   $"{appsLine}\nSnapshot: {snapshot.SavedAt:g} ({snapshot.Reason})";
         Notify(title, text, result.Failed > 0 ? ToolTipIcon.Warning : ToolTipIcon.Info);
     }
 

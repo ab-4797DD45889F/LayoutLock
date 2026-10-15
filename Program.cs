@@ -59,6 +59,7 @@ internal static class Program
 
             case "uninstall":
                 Autostart.Disable();
+                NotificationIdentity.Remove();
                 Console.WriteLine("Autostart removed. Exit the running agent from its tray icon.");
                 return 0;
 
@@ -78,6 +79,8 @@ internal static class Program
         if (Autostart.IsHostedByDotnet)
             NativeMethods.FreeConsole();
 
+        // Must happen before the tray icon's window is created.
+        NotificationIdentity.Apply();
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayAgent());
         return 0;

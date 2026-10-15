@@ -125,6 +125,9 @@ internal static class NativeMethods
     [DllImport("kernel32.dll")]
     public static extern bool FreeConsole();
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
     public static string GetWindowText(IntPtr hWnd)
     {
         var length = GetWindowTextLength(hWnd);

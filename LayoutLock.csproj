@@ -17,6 +17,8 @@
   <ItemGroup>
     <!-- The tray icon is loaded from here because, run through dotnet.exe, the exe's own icon is never used. -->
     <EmbeddedResource Include="app.ico" LogicalName="LayoutLock.app.ico" />
+    <!-- Loose copy for the notification identity's IconUri, which must be a file path. -->
+    <None Include="app.ico" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="tools/**" />
     <EmbeddedResource Remove="tools/**" />
     <None Remove="tools/**" />
