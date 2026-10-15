@@ -1,6 +1,6 @@
-using static WindowPositionTool.NativeMethods;
+using static LayoutLock.NativeMethods;
 
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 internal sealed record MonitorDescriptor(IntPtr Handle, string Device, RECT Bounds, RECT WorkArea, bool IsPrimary);
 

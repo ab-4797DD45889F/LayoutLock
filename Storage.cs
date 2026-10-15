@@ -1,11 +1,11 @@
 using Microsoft.Win32;
 
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 internal static class Storage
 {
     public static readonly string Folder =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowPositionTool");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LayoutLock");
 
     public static readonly string SnapshotPath = Path.Combine(Folder, "snapshot.json");
     public static readonly string LogPath = Path.Combine(Folder, "log.txt");
@@ -37,7 +37,7 @@ internal static class Storage
 internal static class Autostart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "WindowPositionTool";
+    private const string ValueName = "LayoutLock";
 
     public static bool IsEnabled
     {

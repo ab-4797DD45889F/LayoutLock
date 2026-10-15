@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
-using static WindowPositionTool.NativeMethods;
+using static LayoutLock.NativeMethods;
 
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 internal sealed class WindowRecord
 {

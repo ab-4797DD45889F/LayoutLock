@@ -9,14 +9,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Physical pixel coordinates for every window, regardless of the target app's own DPI awareness. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <AssemblyName>WindowPositionTool</AssemblyName>
-    <RootNamespace>WindowPositionTool</RootNamespace>
+    <AssemblyName>LayoutLock</AssemblyName>
+    <RootNamespace>LayoutLock</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The tray icon is loaded from here because, run through dotnet.exe, the exe's own icon is never used. -->
-    <EmbeddedResource Include="app.ico" LogicalName="WindowPositionTool.app.ico" />
+    <EmbeddedResource Include="app.ico" LogicalName="LayoutLock.app.ico" />
     <Compile Remove="tools/**" />
     <EmbeddedResource Remove="tools/**" />
     <None Remove="tools/**" />

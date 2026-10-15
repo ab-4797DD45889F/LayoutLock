@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 internal static class NativeMethods
 {

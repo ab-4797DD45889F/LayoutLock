@@ -1,19 +1,19 @@
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 internal static class Program
 {
     private const string Usage = """
-        WindowPositionTool - saves and restores window positions across different monitor sets.
+        LayoutLock - saves and restores window positions across different monitor sets.
 
         Usage:
-          WindowPositionTool                 run the tray agent (same as 'agent')
-          WindowPositionTool agent           run the tray agent: auto-save on hibernate/sleep, auto-restore on wake
-          WindowPositionTool save            save current window positions
-          WindowPositionTool restore         restore window positions from the last save
-          WindowPositionTool install         start the agent automatically at logon (and start it now)
-          WindowPositionTool uninstall       remove the logon autostart
+          LayoutLock              run the tray agent (same as 'agent')
+          LayoutLock agent        run the tray agent: auto-save on hibernate/sleep, auto-restore on wake
+          LayoutLock save         save current window positions
+          LayoutLock restore      restore window positions from the last save
+          LayoutLock install      start the agent automatically at logon (and start it now)
+          LayoutLock uninstall    remove the logon autostart
 
-        Data and log: %LOCALAPPDATA%\WindowPositionTool
+        Data and log: %LOCALAPPDATA%\LayoutLock
         """;
 
     [STAThread]
@@ -70,7 +70,7 @@ internal static class Program
 
     private static int RunAgent()
     {
-        using var mutex = new Mutex(true, @"Local\WindowPositionTool.Agent", out var isFirst);
+        using var mutex = new Mutex(true, @"Local\LayoutLock.Agent", out var isFirst);
         if (!isFirst)
             return 0;
 

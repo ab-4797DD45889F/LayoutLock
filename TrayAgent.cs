@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Win32;
 
-namespace WindowPositionTool;
+namespace LayoutLock;
 
 /// <summary>
 /// Background agent: saves the layout when Windows suspends/hibernates and restores it after resume,
@@ -47,7 +47,7 @@ internal sealed class TrayAgent : ApplicationContext
         _icon = new NotifyIcon
         {
             Icon = LoadAppIcon(),
-            Text = "Window Position Tool",
+            Text = "LayoutLock",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -247,7 +247,7 @@ internal sealed class TrayAgent : ApplicationContext
 
     private static Icon LoadAppIcon()
     {
-        using var stream = typeof(TrayAgent).Assembly.GetManifestResourceStream("WindowPositionTool.app.ico");
+        using var stream = typeof(TrayAgent).Assembly.GetManifestResourceStream("LayoutLock.app.ico");
         // Ask for the tray's own size (16/20/24/32 px depending on DPI) so Windows doesn't downscale a big frame.
         return stream is null ? SystemIcons.Application : new Icon(stream, SystemInformation.SmallIconSize);
     }

@@ -1,4 +1,4 @@
-# Window Position Tool
+# LayoutLock
 
 Saves and restores window positions when you hibernate at one location (e.g. the office) and resume at another
 (e.g. home) with a different but equivalent pair of monitors.
@@ -17,18 +17,18 @@ office" maps to "the right monitor at home". Each window's position is stored re
 
 The corporate Microsoft Defender policy enforces the Attack Surface Reduction rule
 *"Block executable files from running unless they meet a prevalence, age, or trusted list criterion"*
-(`01443614-CD74-433A-B99E-2ECDC07BFC25`). A freshly built `WindowPositionTool.exe` fails that check, so starting it
+(`01443614-CD74-433A-B99E-2ECDC07BFC25`). A freshly built `LayoutLock.exe` fails that check, so starting it
 directly gives:
 
 ```
-Program 'WindowPositionTool.exe' failed to run: Access is denied
+Program 'LayoutLock.exe' failed to run: Access is denied
 ```
 
 The blocks are visible in Event Viewer → *Applications and Services Logs → Microsoft → Windows → Windows Defender →
 Operational*, event id **1121**.
 
-The trusted `dotnet.exe` host is not affected, so all commands below use `dotnet WindowPositionTool.dll ...`.
-If IT adds an exception for the exe, `WindowPositionTool.exe ...` works identically.
+The trusted `dotnet.exe` host is not affected, so all commands below use `dotnet LayoutLock.dll ...`.
+If IT adds an exception for the exe, `LayoutLock.exe ...` works identically.
 
 ## Build
 
@@ -41,10 +41,10 @@ dotnet publish -c Release -o publish
 The commands below assume:
 
 ```
-set TOOL=C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\WindowPositionTool.dll
+set TOOL=C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll
 ```
 
-(PowerShell: `$TOOL = "C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\WindowPositionTool.dll"`,
+(PowerShell: `$TOOL = "C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll"`,
 then use `$TOOL` instead of `%TOOL%`.)
 
 ## Automatic mode (recommended)
@@ -55,7 +55,7 @@ Install once:
 dotnet %TOOL% install
 ```
 
-This registers a logon autostart (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `WindowPositionTool`)
+This registers a logon autostart (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `LayoutLock`)
 and starts the tray agent right away. A console window may flash briefly at logon before the agent hides it.
 
 What the agent does:
@@ -97,7 +97,7 @@ Your daily routine doesn't change: hibernate at one place, wake up at the other,
 dotnet %TOOL% uninstall
 ```
 
-Then right-click the tray icon → **Exit**. Optionally delete `%LOCALAPPDATA%\WindowPositionTool`.
+Then right-click the tray icon → **Exit**. Optionally delete `%LOCALAPPDATA%\LayoutLock`.
 
 ## Manual mode
 
@@ -115,14 +115,14 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
 1. Right-click the tray icon → **Save positions now** (or `dotnet %TOOL% save`).
 2. Move a few windows to other places / the other monitor, maximize or minimize some.
 3. Right-click the tray icon → **Restore positions now** (or `dotnet %TOOL% restore`).
-4. Check `%LOCALAPPDATA%\WindowPositionTool\log.txt`.
+4. Check `%LOCALAPPDATA%\LayoutLock\log.txt`.
 
 ## Files
 
 | Path | Content |
 |---|---|
-| `%LOCALAPPDATA%\WindowPositionTool\snapshot.json` | Last saved layout: monitors, and per window the process, title, monitor index, position, maximized/minimized state. |
-| `%LOCALAPPDATA%\WindowPositionTool\log.txt` | Every save/restore with counts; rotated to `log.txt.old` at ~1 MB. |
+| `%LOCALAPPDATA%\LayoutLock\snapshot.json` | Last saved layout: monitors, and per window the process, title, monitor index, position, maximized/minimized state. |
+| `%LOCALAPPDATA%\LayoutLock\log.txt` | Every save/restore with counts; rotated to `log.txt.old` at ~1 MB. |
 
 ## Limitations
 
