@@ -63,7 +63,7 @@ internal sealed class TrayAgent : ApplicationContext
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
-        Storage.Log("Agent started.");
+        Storage.Log(Autostart.IsElevated ? "Agent started (as administrator)." : "Agent started (not elevated: windows of apps run as administrator can't be moved).");
     }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)

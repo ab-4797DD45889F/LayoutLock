@@ -22,8 +22,9 @@ layoutlock install
 Or download `LayoutLock.exe` from [Releases](https://github.com/ab-4797DD45889F/LayoutLock/releases), put it anywhere
 permanent (e.g. `%LOCALAPPDATA%\Programs\LayoutLock`) and run `LayoutLock.exe install` from there.
 
-`install` starts the tray agent and registers it to start at logon. Before uninstalling (or deleting the exe), run
-`layoutlock uninstall` and exit the agent from its tray icon.
+`install` asks for administrator rights once (UAC), starts the tray agent and registers it to start at logon as
+administrator. Before uninstalling or deleting the exe, run `layoutlock uninstall` and exit the agent from its tray
+icon. After moving the exe, exit the agent and run `install` again from the new location.
 
 The rest of this README uses the developer setup, where the tool is built from source and run through `dotnet`.
 
@@ -60,10 +61,10 @@ dotnet publish -c Release -o publish
 The commands below assume:
 
 ```
-set TOOL=C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll
+set TOOL=C:\Aleksey-no-sync\Personal-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll
 ```
 
-(PowerShell: `$TOOL = "C:\Aleksey-no-sync\IR-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll"`,
+(PowerShell: `$TOOL = "C:\Aleksey-no-sync\Personal-2026\2026-10-15-Windows-Position-Tool\publish\LayoutLock.dll"`,
 then use `$TOOL` instead of `%TOOL%`.)
 
 ## Automatic mode (recommended)
@@ -74,8 +75,17 @@ Install once:
 dotnet %TOOL% install
 ```
 
-This registers a logon autostart (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `LayoutLock`)
-and starts the tray agent right away. A console window may flash briefly at logon before the agent hides it.
+This shows one UAC prompt, registers a logon autostart and starts the tray agent right away. The autostart is the
+Task Scheduler task `LayoutLock` with *Run with highest privileges*: the agent starts as administrator at logon
+without a UAC prompt, so it can move windows of apps started as administrator (an `HKCU\...\Run` entry can never
+start elevated). `log.txt` shows `Agent started (as administrator).` when that worked. A console window may flash
+briefly at logon before the agent hides it.
+
+Earlier versions used `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (value `LayoutLock`); `install` and
+`uninstall` remove that entry.
+
+**After moving the folder**: exit the running agent from its tray icon, rebuild if needed, and run `install` again
+from the new location. It overwrites the task with the new path.
 
 What the agent does:
 
@@ -104,7 +114,7 @@ Tray icon menu (right-click):
 
 - **Save positions now**
 - **Restore positions now** (also: double-click the icon)
-- **Start with Windows** — toggles the logon autostart
+- **Start with Windows** — toggles the logon autostart (UAC prompt if the agent is not elevated)
 - **Open data folder**
 - **Exit**
 
@@ -146,8 +156,9 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
 
 ## Limitations
 
-- Windows of applications started **as administrator** can only be moved if the tool also runs elevated; they
-  are reported as `failed` in the log.
+- Windows of applications started **as administrator** can only be moved if the tool also runs elevated. The
+  agent does when started by `install` or its logon task; manual `save` / `restore` need an elevated console.
+  Otherwise they are reported as `failed` in the log.
 - Plain **sleep** on some laptops (Modern Standby) may not notify the agent; **hibernate** always does. The
   2-minute backup save covers a missed notification.
 - If the two locations have a different number of monitors, windows saved on a monitor that doesn't exist at the

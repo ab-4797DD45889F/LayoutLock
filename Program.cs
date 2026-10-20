@@ -10,7 +10,7 @@ internal static class Program
           LayoutLock agent        run the tray agent: auto-save on hibernate/sleep, auto-restore on wake
           LayoutLock save         save current window positions
           LayoutLock restore      restore window positions from the last save
-          LayoutLock install      start the agent automatically at logon (and start it now)
+          LayoutLock install      start the agent as administrator at logon (and start it now)
           LayoutLock uninstall    remove the logon autostart
 
         Data and log: %LOCALAPPDATA%\LayoutLock
@@ -47,9 +47,23 @@ internal static class Program
                 return result.Failed == 0 ? 0 : 2;
 
             case "install":
-                Autostart.Enable();
-                Console.WriteLine("Autostart enabled. Starting the agent...");
                 var (fileName, argumentPrefix) = Autostart.LaunchCommand();
+                if (!Autostart.IsElevated)
+                {
+                    // One UAC prompt for both the task and the agent started below, which must run elevated too.
+                    Console.WriteLine("Requesting administrator rights...");
+                    var exitCode = RunElevated(fileName, argumentPrefix + "install");
+                    Console.WriteLine(exitCode == 0
+                        ? "Autostart enabled (as administrator) and the agent started."
+                        : "Install failed or was cancelled.");
+                    return exitCode == 0 ? 0 : 1;
+                }
+                if (!Autostart.Enable())
+                {
+                    Console.WriteLine("Could not create the scheduled task.");
+                    return 1;
+                }
+                Console.WriteLine("Autostart enabled. Starting the agent...");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fileName, argumentPrefix + "agent")
                 {
                     UseShellExecute = false,
@@ -58,7 +72,11 @@ internal static class Program
                 return 0;
 
             case "uninstall":
-                Autostart.Disable();
+                if (!Autostart.Disable())
+                {
+                    Console.WriteLine("Could not remove the scheduled task.");
+                    return 1;
+                }
                 NotificationIdentity.Remove();
                 Console.WriteLine("Autostart removed. Exit the running agent from its tray icon.");
                 return 0;
@@ -66,6 +84,26 @@ internal static class Program
             default:
                 Console.WriteLine(Usage);
                 return command is "help" or "h" or "?" ? 0 : 1;
+        }
+    }
+
+    /// <summary>Runs a command through a UAC prompt and waits for it; -1 if the prompt was declined.</summary>
+    private static int RunElevated(string fileName, string arguments)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fileName, arguments)
+            {
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            })!;
+            process.WaitForExit();
+            return process.ExitCode;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return -1;
         }
     }
 

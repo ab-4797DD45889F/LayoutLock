@@ -74,25 +74,129 @@ internal static class NotificationIdentity
     }
 }
 
+/// <summary>
+/// Logon autostart as a scheduled task with "Run with highest privileges": an elevated agent is required to move
+/// windows of apps started as administrator, and HKCU\...\Run entries can never start elevated.
+/// Creating or deleting such a task needs elevation, so non-elevated callers get a UAC prompt for schtasks.exe.
+/// </summary>
 internal static class Autostart
 {
-    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "LayoutLock";
+    private const string TaskName = "LayoutLock";
 
-    public static bool IsEnabled
+    // Earlier versions registered the autostart here; removed on Enable/Disable.
+    private const string LegacyRunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string LegacyValueName = "LayoutLock";
+
+    public static bool IsElevated
     {
         get
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-            return key?.GetValue(ValueName) is string;
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(identity)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
         }
     }
 
-    public static void Enable()
+    public static bool IsEnabled => RunSchtasks($"/query /tn \"{TaskName}\"", elevate: false) == 0;
+
+    public static bool Enable()
     {
         var (fileName, argumentPrefix) = LaunchCommand();
-        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        key.SetValue(ValueName, $"\"{fileName}\" {argumentPrefix}agent");
+        var xmlPath = Path.Combine(Path.GetTempPath(), $"LayoutLock-task-{Environment.ProcessId}.xml");
+        File.WriteAllText(xmlPath, TaskXml(fileName, argumentPrefix + "agent"), System.Text.Encoding.Unicode);
+        try
+        {
+            if (RunSchtasks($"/create /f /tn \"{TaskName}\" /xml \"{xmlPath}\"", elevate: true) != 0)
+                return false;
+        }
+        finally
+        {
+            File.Delete(xmlPath);
+        }
+        RemoveLegacyRunEntry();
+        return true;
+    }
+
+    public static bool Disable()
+    {
+        RemoveLegacyRunEntry();
+        return !IsEnabled || RunSchtasks($"/delete /f /tn \"{TaskName}\"", elevate: true) == 0;
+    }
+
+    private static void RemoveLegacyRunEntry()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(LegacyRunKey, writable: true);
+        key?.DeleteValue(LegacyValueName, throwOnMissingValue: false);
+    }
+
+    /// <summary>Returns the schtasks exit code, or -1 if it could not run (e.g. the UAC prompt was declined).</summary>
+    private static int RunSchtasks(string arguments, bool elevate)
+    {
+        var useUac = elevate && !IsElevated;
+        var startInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe", arguments)
+        {
+            UseShellExecute = useUac,
+            Verb = useUac ? "runas" : "",
+            WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            CreateNoWindow = true,
+            RedirectStandardOutput = !useUac,
+            RedirectStandardError = !useUac,
+        };
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(startInfo)!;
+            if (!useUac)
+            {
+                process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+            }
+            process.WaitForExit();
+            return process.ExitCode;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return -1;
+        }
+    }
+
+    private static string TaskXml(string command, string arguments)
+    {
+        static string Escape(string s) => System.Security.SecurityElement.Escape(s);
+        var user = Escape(System.Security.Principal.WindowsIdentity.GetCurrent().Name);
+        return $"""
+            <?xml version="1.0" encoding="UTF-16"?>
+            <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+              <RegistrationInfo>
+                <Description>LayoutLock tray agent: saves window positions on hibernate/sleep and restores them on wake.</Description>
+              </RegistrationInfo>
+              <Triggers>
+                <LogonTrigger>
+                  <Enabled>true</Enabled>
+                  <UserId>{user}</UserId>
+                </LogonTrigger>
+              </Triggers>
+              <Principals>
+                <Principal id="Author">
+                  <UserId>{user}</UserId>
+                  <LogonType>InteractiveToken</LogonType>
+                  <RunLevel>HighestAvailable</RunLevel>
+                </Principal>
+              </Principals>
+              <Settings>
+                <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                <Priority>5</Priority>
+              </Settings>
+              <Actions Context="Author">
+                <Exec>
+                  <Command>{Escape(command)}</Command>
+                  <Arguments>{Escape(arguments)}</Arguments>
+                </Exec>
+              </Actions>
+            </Task>
+            """;
     }
 
     public static bool IsHostedByDotnet =>
@@ -106,10 +210,4 @@ internal static class Autostart
         IsHostedByDotnet
             ? (Environment.ProcessPath!, $"\"{typeof(Autostart).Assembly.Location}\" ")
             : (Environment.ProcessPath!, "");
-
-    public static void Disable()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-        key?.DeleteValue(ValueName, throwOnMissingValue: false);
-    }
 }
