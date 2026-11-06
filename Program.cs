@@ -25,7 +25,8 @@ internal static class Program
         if (command != "agent")
             NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
 
-        if (command is "agent" or "save" or "restore")
+        // The agent migrates after detaching from the console (see RunAgent).
+        if (command is "save" or "restore")
             Storage.MigrateLegacySnapshot();
 
         switch (command)
@@ -120,6 +121,10 @@ internal static class Program
         // dotnet.exe is a console app; the tray agent has no use for its window.
         if (Autostart.IsHostedByDotnet)
             NativeMethods.FreeConsole();
+
+        // Logs, so only after FreeConsole: console output written before it would be bound to a handle that
+        // becomes invalid when the console is released.
+        Storage.MigrateLegacySnapshot();
 
         // Must happen before the tray icon's window is created.
         NotificationIdentity.Apply();

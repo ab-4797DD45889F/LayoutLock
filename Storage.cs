@@ -48,7 +48,14 @@ internal static class Storage
     public static void Log(string message)
     {
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
-        Console.WriteLine(line);
+        try
+        {
+            Console.WriteLine(line);
+        }
+        catch (IOException)
+        {
+            // No usable console (e.g. the agent released the one dotnet.exe started with).
+        }
         lock (LogLock)
         {
             try
