@@ -8,11 +8,12 @@ internal static class Program
         Usage:
           LayoutLock              run the tray agent (same as 'agent')
           LayoutLock agent        run the tray agent: auto-save on hibernate/sleep, auto-restore on wake
-          LayoutLock save         save current window positions
-          LayoutLock restore      restore window positions from the last save
+          LayoutLock save         save current window positions and taskbar order
+          LayoutLock restore      restore them from the last save for the current number of monitors
           LayoutLock install      start the agent as administrator at logon (and start it now)
           LayoutLock uninstall    remove the logon autostart
 
+        Each number of monitors (e.g. docked vs. laptop only) has its own saved layout.
         Data and log: %LOCALAPPDATA%\LayoutLock
         """;
 
@@ -24,6 +25,9 @@ internal static class Program
         if (command != "agent")
             NativeMethods.AttachConsole(NativeMethods.ATTACH_PARENT_PROCESS);
 
+        if (command is "agent" or "save" or "restore")
+            Storage.MigrateLegacySnapshot();
+
         switch (command)
         {
             case "agent":
@@ -31,15 +35,15 @@ internal static class Program
 
             case "save":
                 var snapshot = WindowCapture.Capture("manual");
-                snapshot.Save(Storage.SnapshotPath);
-                Storage.Log($"Saved {snapshot.Windows.Count} window(s) on {snapshot.MonitorCount} monitor(s) to {Storage.SnapshotPath}");
+                snapshot.Save();
+                Storage.Log($"Saved {snapshot.Windows.Count} window(s) on {snapshot.MonitorCount} monitor(s) to {Storage.SnapshotPath(snapshot.MonitorCount)}");
                 return 0;
 
             case "restore":
-                var saved = Snapshot.Load(Storage.SnapshotPath);
+                var saved = Snapshot.LoadForCurrentMonitors();
                 if (saved is null)
                 {
-                    Storage.Log($"No snapshot found at {Storage.SnapshotPath}");
+                    Storage.Log($"No snapshot found at {Storage.SnapshotPath(Monitors.GetOrdered().Count)}");
                     return 1;
                 }
                 var result = WindowRestore.Restore(saved, Storage.Log);

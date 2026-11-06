@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Only for UI Automation (UIAutomationClient), used to read the taskbar button order. -->
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -38,6 +40,8 @@
   <ItemGroup>
     <!-- Embedded rather than loose: run through dotnet.exe the exe's own icon is never used,
          and a single-file release has no loose files at all. -->
+    <!-- UseWPF leaves System.IO out of the implicit usings (System.Windows.Shapes.Path would clash). -->
+    <Using Include="System.IO" />
     <EmbeddedResource Include="app.ico" LogicalName="LayoutLock.app.ico" />
     <Compile Remove="tools/**" />
     <EmbeddedResource Remove="tools/**" />

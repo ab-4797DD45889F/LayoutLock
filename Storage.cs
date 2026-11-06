@@ -7,7 +7,39 @@ internal static class Storage
     public static readonly string Folder =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LayoutLock");
 
-    public static readonly string SnapshotPath = Path.Combine(Folder, "snapshot.json");
+    /// <summary>
+    /// One snapshot per number of connected monitors, so e.g. the docked (2 monitors) and the laptop-only (1 monitor)
+    /// layouts are kept apart and each is restored when that setup comes back.
+    /// </summary>
+    public static string SnapshotPath(int monitorCount) =>
+        Path.Combine(Folder, monitorCount == 1 ? "snapshot-1-monitor.json" : $"snapshot-{monitorCount}-monitors.json");
+
+    // Earlier versions kept a single snapshot regardless of the monitor count.
+    private static readonly string LegacySnapshotPath = Path.Combine(Folder, "snapshot.json");
+
+    /// <summary>Moves a snapshot.json from an earlier version to the file for its monitor count.</summary>
+    public static void MigrateLegacySnapshot()
+    {
+        try
+        {
+            if (!File.Exists(LegacySnapshotPath))
+                return;
+            var legacy = Snapshot.Load(LegacySnapshotPath);
+            if (legacy is not null && legacy.MonitorCount > 0 && !File.Exists(SnapshotPath(legacy.MonitorCount)))
+            {
+                File.Move(LegacySnapshotPath, SnapshotPath(legacy.MonitorCount));
+                Log($"Moved snapshot.json to {Path.GetFileName(SnapshotPath(legacy.MonitorCount))}.");
+            }
+            else
+            {
+                File.Delete(LegacySnapshotPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not migrate snapshot.json: {ex.Message}");
+        }
+    }
     public static readonly string LogPath = Path.Combine(Folder, "log.txt");
 
     private const long MaxLogBytes = 1_000_000;

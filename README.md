@@ -8,6 +8,14 @@ pairs of monitors look like two unrelated setups to it, so after resume everythi
 This tool fixes that by matching monitors by their **left-to-right order** instead: "the right monitor at the
 office" maps to "the right monitor at home". Each window's position is stored relative to its monitor.
 
+Layouts are kept **per number of monitors**: the docked layout (e.g. 2 monitors) and the laptop-only layout
+(1 monitor) are saved separately and never overwrite each other. Plug the monitors in and the 2-monitor layout comes
+back; unplug them and the 1-monitor layout comes back.
+
+It also keeps the **order of window buttons on the taskbar**. Windows re-creates a button at the end of its app group
+whenever the window moves to another monitor's taskbar, which shuffles e.g. several Terminal windows; LayoutLock puts
+them back in the saved order.
+
 ## Install
 
 Requires Windows 10 1809 or later, x64. The release is a single self-contained `LayoutLock.exe`, no .NET install needed.
@@ -91,21 +99,31 @@ What the agent does:
 
 | When | What happens |
 |---|---|
-| Windows starts going to **hibernate / sleep** | All window positions are saved. |
-| After **resume** | Waits until the saved number of monitors is connected and the display setup has been stable for 5 s, then restores. A second pass runs 10 s later, in case Windows moves windows again on its own. If the monitors don't appear within 10 minutes, it gives up (restore manually). |
-| Every **2 minutes** | Backup save, in case a suspend notification is missed. It never overwrites a multi-monitor snapshot while fewer monitors are connected (e.g. undocked laptop). |
+| Windows starts going to **hibernate / sleep** | All window positions and the taskbar order are saved into the layout for the current number of monitors. |
+| After **resume** | Waits until the display setup has been stable for 5 s, then restores the layout saved for the number of monitors now connected. A second pass runs 10 s later, in case Windows moves windows again on its own. |
+| Monitors **connected or disconnected** (without sleeping) | Same as resume: once the setup is stable for 5 s, the layout for the new number of monitors is restored. The first time a monitor count is seen there is nothing to restore; the backup save starts recording it. |
+| Every **2 minutes** | Backup save into the layout for the current number of monitors, in case a suspend notification is missed. Skipped while a restore is pending, so a pile-up of windows right after (un)plugging is never saved. |
+
+Because monitors can be unplugged without warning, the layout you leave is the one from the last backup save (at
+most 2 minutes old) or the last suspend.
+
+The taskbar order is restored inside each app's group of buttons (e.g. the order of several Terminal windows).
+Explorer decides where the groups themselves go (pinned apps stay in their pinned slot), so that part is not changed.
+It needs uncombined taskbar buttons (*Settings → Personalization → Taskbar → Combine taskbar buttons: Never*, or
+*When taskbar is full*); with combined buttons there is no per-window order to keep.
 
 ### Notifications
 
 Every restore shows a Windows notification from the tray icon, so an unplanned or unexpected restore is visible:
 
-- **"Window positions restored (resume)"** — how many windows were actually out of place and moved back, which
-  apps they belong to, and which snapshot was used (time + whether it was taken on suspend, by autosave or manually).
+- **"Window positions restored (resume)"** or **"(2 monitors → 1 monitor)"** — how many windows were actually out of
+  place and moved back, which apps they belong to, whether the taskbar order had to be fixed, and which snapshot was
+  used (monitor count, time, and whether it was taken on suspend, by autosave or manually).
 - **"Window positions checked (...)"** — the restore ran but every window was already in place.
-- The automatic **second pass** after resume only notifies if it had to move something again (i.e. Windows
-  rearranged windows after the first pass).
-- Warnings when the restore was skipped (monitors didn't appear within 10 minutes, no snapshot) or windows failed
-  to move, and an error notification if the restore crashed.
+- The automatic **second pass** only notifies if it had to change something again (i.e. Windows rearranged windows
+  after the first pass).
+- Warnings when a manual restore found no snapshot for the current number of monitors or windows failed to move,
+  and an error notification if the restore crashed.
 
 Click a notification to open `log.txt`, which lists every moved window by app and title. Notifications follow the
 Windows *Do not disturb* / notification settings for the app.
@@ -137,6 +155,8 @@ dotnet %TOOL% save       :: before hibernating
 dotnet %TOOL% restore    :: after resuming, once both monitors are on
 ```
 
+Both use the layout for the number of monitors connected at that moment.
+
 `restore` exit codes: `0` success, `1` no snapshot saved yet, `2` some windows could not be moved.
 
 ## Quick test
@@ -150,7 +170,7 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
 
 | Path | Content |
 |---|---|
-| `%LOCALAPPDATA%\LayoutLock\snapshot.json` | Last saved layout: monitors, and per window the process, title, monitor index, position, maximized/minimized state. |
+| `%LOCALAPPDATA%\LayoutLock\snapshot-1-monitor.json`, `snapshot-2-monitors.json`, ... | Last saved layout for each number of monitors: monitors, per window the process, title, monitor index, position, maximized/minimized state, and the taskbar button order. A `snapshot.json` from an earlier version is moved to the file for its monitor count. |
 | `%LOCALAPPDATA%\LayoutLock\log.txt` | Every save/restore with counts; rotated to `log.txt.old` at ~1 MB. |
 | `%LOCALAPPDATA%\LayoutLock\app.ico` | Icon file that Windows shows on LayoutLock's notifications. |
 
@@ -161,8 +181,11 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
   Otherwise they are reported as `failed` in the log.
 - Plain **sleep** on some laptops (Modern Standby) may not notify the agent; **hibernate** always does. The
   2-minute backup save covers a missed notification.
-- If the two locations have a different number of monitors, windows saved on a monitor that doesn't exist at the
-  new location are left where Windows put them.
+- Layouts are matched by the **number** of monitors only: two different 2-monitor setups (office and home) share
+  one layout, which is the point of the tool.
+- The taskbar order is stored by window handle, so it is kept for windows that stay open (hibernate keeps them);
+  a window that was closed and reopened goes to the end of its group. Restoring it briefly removes and re-adds the
+  affected buttons, so they may flicker once.
 - **Snapped windows** (Win+Left/Right halves, or stretched to full height by double-clicking the top/bottom edge)
   are restored to exactly the same rectangle, but as a plain positioned window: Windows has no API to re-snap a
   window, so after a restore dragging it away no longer brings back its pre-snap size. Snap it again (Win+Arrow)
@@ -178,6 +201,7 @@ dotnet %TOOL% restore    :: after resuming, once both monitors are on
 | `TrayAgent.cs` | Tray icon, suspend/resume and display-change handling, autosave. |
 | `Snapshot.cs` | Capturing and restoring window placements. |
 | `Monitors.cs` | Monitor enumeration ordered left-to-right, coordinate conversion. |
+| `Taskbar.cs` | Reading (UI Automation) and restoring (ITaskbarList) the taskbar button order. |
 | `Storage.cs` | Data/log paths, logon autostart registration. |
 | `NativeMethods.cs` | Win32 P/Invoke declarations. |
 | `icon.svg` | Source design of the app icon (snap layout + padlock). |

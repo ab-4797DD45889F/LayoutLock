@@ -37,9 +37,17 @@ internal sealed class Snapshot
     public List<string> MonitorLayout { get; set; } = [];
     public List<WindowRecord> Windows { get; set; } = [];
 
+    /// <summary>Window handles in taskbar button order; empty if it could not be read.</summary>
+    public List<long> TaskbarOrder { get; set; } = [];
+
+    /// <summary>The snapshot for the current number of monitors, or null if that setup was never saved.</summary>
+    public static Snapshot? LoadForCurrentMonitors() => Load(Storage.SnapshotPath(Monitors.GetOrdered().Count));
+
+    public void Save() => Save(Storage.SnapshotPath(MonitorCount));
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public void Save(string path)
+    private void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
@@ -130,6 +138,7 @@ internal static class WindowCapture
             return true;
         }, IntPtr.Zero);
 
+        snapshot.TaskbarOrder = Taskbar.CaptureOrder() ?? [];
         return snapshot;
     }
 
@@ -166,11 +175,18 @@ internal static class WindowRestore
 {
     /// <param name="Restored">Windows placed successfully, including those that were already in place.</param>
     /// <param name="MovedApps">Process names of the windows that were actually out of place before the restore.</param>
-    public sealed record Result(int Restored, IReadOnlyList<string> MovedApps, int Skipped, int Failed)
+    /// <param name="TaskbarGroupsReordered">App groups whose taskbar buttons were put back into the saved order.</param>
+    public sealed record Result(int Restored, IReadOnlyList<string> MovedApps, int Skipped, int Failed, int TaskbarGroupsReordered)
     {
+        public bool ChangedAnything => MovedApps.Count > 0 || TaskbarGroupsReordered > 0;
+
         public string Summary =>
-            $"Moved {MovedApps.Count} of {Restored} window(s), skipped {Skipped}, failed {Failed}";
+            $"Moved {MovedApps.Count} of {Restored} window(s), skipped {Skipped}, failed {Failed}, " +
+            $"reordered {TaskbarGroupsReordered} taskbar group(s)";
     }
+
+    // Explorer re-creates the buttons of windows that moved to another monitor's taskbar asynchronously.
+    private static readonly TimeSpan TaskbarSettleDelay = TimeSpan.FromSeconds(1.5);
 
     public static Result Restore(Snapshot snapshot, Action<string> log)
     {
@@ -269,7 +285,15 @@ internal static class WindowRestore
             }
         }
 
-        return new Result(restored, movedApps, skipped, failed);
+        var reordered = 0;
+        if (snapshot.TaskbarOrder.Count > 0)
+        {
+            if (movedApps.Count > 0)
+                Thread.Sleep(TaskbarSettleDelay);
+            reordered = Taskbar.RestoreOrder(snapshot.TaskbarOrder, log);
+        }
+
+        return new Result(restored, movedApps, skipped, failed, reordered);
     }
 
     public static bool IsMinimized(int showCmd) => showCmd is SW_SHOWMINIMIZED or SW_SHOWMINNOACTIVE;

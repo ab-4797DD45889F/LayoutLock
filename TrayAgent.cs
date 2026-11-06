@@ -4,14 +4,14 @@ using Microsoft.Win32;
 namespace LayoutLock;
 
 /// <summary>
-/// Background agent: saves the layout when Windows suspends/hibernates and restores it after resume,
-/// once the external monitors have come back and the display setup has stopped changing.
+/// Background agent: saves the layout when Windows suspends/hibernates and restores it after resume, and restores
+/// the layout saved for the new number of monitors whenever monitors are connected or disconnected.
+/// Restores wait until the display setup has stopped changing.
 /// </summary>
 internal sealed class TrayAgent : ApplicationContext
 {
     private static readonly TimeSpan SettleDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SecondPassDelay = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan GiveUpAfter = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan AutosaveInterval = TimeSpan.FromMinutes(2);
 
     private readonly object _sync = new();
@@ -20,11 +20,17 @@ internal sealed class TrayAgent : ApplicationContext
     private readonly System.Threading.Timer _restoreTimer;
     private readonly System.Threading.Timer _autosaveTimer;
 
-    private bool _pendingRestore;
+    // A display change or resume is waiting for the setup to settle.
+    private bool _pendingCheck;
+    // The pending check must restore even if the number of monitors did not change.
+    private bool _resumed;
     private bool _secondPassDone = true;
-    private DateTime _resumedAt;
+    private string _secondPassReason = "";
     private DateTime _lastDisplayChange;
     private DateTime _quietUntil;
+
+    // Number of monitors whose layout is currently on screen; autosave writes only to that layout's snapshot.
+    private int _activeMonitorCount;
 
     public TrayAgent()
     {
@@ -36,8 +42,9 @@ internal sealed class TrayAgent : ApplicationContext
         };
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Save positions now", null, (_, _) => SaveNow("manual"));
-        menu.Items.Add("Restore positions now", null, (_, _) => RestoreNow("manual"));
+        // Off the UI thread: both read the taskbar through UI Automation, and a restore waits for Explorer.
+        menu.Items.Add("Save positions now", null, (_, _) => Task.Run(() => SaveNow("manual")));
+        menu.Items.Add("Restore positions now", null, (_, _) => Task.Run(() => RestoreNow("manual")));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostartItem);
         menu.Items.Add("Open data folder", null, (_, _) => OpenFolder());
@@ -51,12 +58,13 @@ internal sealed class TrayAgent : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _icon.DoubleClick += (_, _) => RestoreNow("manual");
+        _icon.DoubleClick += (_, _) => Task.Run(() => RestoreNow("manual"));
         _icon.BalloonTipClicked += (_, _) => OpenLog();
 
         // Restores run on timer threads; the tray icon belongs to the UI thread.
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
+        _activeMonitorCount = Monitors.GetOrdered().Count;
         _restoreTimer = new System.Threading.Timer(_ => OnRestoreTimer());
         _autosaveTimer = new System.Threading.Timer(_ => OnAutosave(), null, AutosaveInterval, AutosaveInterval);
 
@@ -74,8 +82,10 @@ internal sealed class TrayAgent : ApplicationContext
                 // Runs synchronously inside the suspend broadcast, so the file is written before the machine goes down.
                 lock (_sync)
                 {
-                    SaveNow("suspend");
-                    _pendingRestore = true;
+                    if (CanSave(out var why))
+                        SaveNow("suspend");
+                    else
+                        Storage.Log($"Not saved on suspend: {why}.");
                 }
                 break;
 
@@ -83,10 +93,8 @@ internal sealed class TrayAgent : ApplicationContext
                 lock (_sync)
                 {
                     Storage.Log("Resumed; waiting for displays to settle.");
-                    _pendingRestore = true;
-                    _resumedAt = DateTime.Now;
-                    _lastDisplayChange = DateTime.Now;
-                    _restoreTimer.Change(SettleDelay, Timeout.InfiniteTimeSpan);
+                    _resumed = true;
+                    ScheduleCheck();
                 }
                 break;
         }
@@ -95,77 +103,80 @@ internal sealed class TrayAgent : ApplicationContext
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         lock (_sync)
-        {
-            _lastDisplayChange = DateTime.Now;
-            if (_pendingRestore)
-                _restoreTimer.Change(SettleDelay, Timeout.InfiniteTimeSpan);
-        }
+            ScheduleCheck();
+    }
+
+    private void ScheduleCheck()
+    {
+        _pendingCheck = true;
+        _lastDisplayChange = DateTime.Now;
+        _restoreTimer.Change(SettleDelay, Timeout.InfiniteTimeSpan);
     }
 
     private void OnRestoreTimer()
     {
         lock (_sync)
         {
+            if (_pendingCheck)
+            {
+                var sinceChange = DateTime.Now - _lastDisplayChange;
+                if (sinceChange < SettleDelay)
+                {
+                    _restoreTimer.Change(SettleDelay - sinceChange, Timeout.InfiniteTimeSpan);
+                    return;
+                }
+
+                var count = Monitors.GetOrdered().Count;
+                var reason = _resumed ? "resume"
+                    : count != _activeMonitorCount ? $"{MonitorsText(_activeMonitorCount)} → {MonitorsText(count)}"
+                    : null;
+                _pendingCheck = false;
+                _resumed = false;
+                _activeMonitorCount = count;
+
+                if (reason is not null)
+                {
+                    if (reason != "resume")
+                        Storage.Log($"Display setup changed: {reason}.");
+                    RestoreNow(reason, missingSnapshotIsNormal: true);
+                    // Windows' own "remember window locations" logic sometimes moves windows again right after us.
+                    _secondPassDone = false;
+                    _secondPassReason = reason;
+                    _restoreTimer.Change(SecondPassDelay, Timeout.InfiniteTimeSpan);
+                    return;
+                }
+                // A change that kept the number of monitors (resolution, scaling): nothing to restore,
+                // but a second pass interrupted by it still has to run.
+            }
+
             if (!_secondPassDone)
             {
-                // Windows' own "remember window locations" logic sometimes moves windows again right after us.
                 _secondPassDone = true;
-                RestoreNow("resume, second pass", notifyOnlyIfMoved: true);
-                return;
+                RestoreNow($"{_secondPassReason}, second pass", notifyOnlyIfChanged: true, missingSnapshotIsNormal: true);
             }
-
-            if (!_pendingRestore)
-                return;
-
-            var sinceChange = DateTime.Now - _lastDisplayChange;
-            if (sinceChange < SettleDelay)
-            {
-                _restoreTimer.Change(SettleDelay - sinceChange, Timeout.InfiniteTimeSpan);
-                return;
-            }
-
-            var snapshot = Snapshot.Load(Storage.SnapshotPath);
-            var monitorCount = Monitors.GetOrdered().Count;
-            if (snapshot is null)
-            {
-                _pendingRestore = false;
-                return;
-            }
-
-            if (monitorCount < snapshot.MonitorCount)
-            {
-                if (DateTime.Now - _resumedAt > GiveUpAfter)
-                {
-                    Storage.Log($"Gave up waiting for {snapshot.MonitorCount} monitors (have {monitorCount}). Use 'Restore positions now' manually.");
-                    Notify("Window positions not restored",
-                        $"Waited 10 minutes for {snapshot.MonitorCount} monitors, only {monitorCount} connected. " +
-                        "Use 'Restore positions now' from the tray menu.", ToolTipIcon.Warning);
-                    _pendingRestore = false;
-                }
-                else
-                {
-                    _restoreTimer.Change(TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan);
-                }
-                return;
-            }
-
-            _pendingRestore = false;
-            RestoreNow("resume");
-            _secondPassDone = false;
-            _restoreTimer.Change(SecondPassDelay, Timeout.InfiniteTimeSpan);
         }
+    }
+
+    private static string MonitorsText(int count) => count == 1 ? "1 monitor" : $"{count} monitors";
+
+    /// <summary>
+    /// Saving is only safe while the windows show the layout of the current monitor setup: right after monitors were
+    /// (dis)connected, Windows has piled them up and the restore for the new setup has not run yet.
+    /// </summary>
+    private bool CanSave(out string why)
+    {
+        var count = Monitors.GetOrdered().Count;
+        why = count != _activeMonitorCount
+            ? $"monitors changed ({MonitorsText(_activeMonitorCount)} → {MonitorsText(count)}) and the restore has not run yet"
+            : "";
+        return count == _activeMonitorCount;
     }
 
     private void OnAutosave()
     {
         lock (_sync)
         {
-            if (_pendingRestore || !_secondPassDone || DateTime.Now < _quietUntil)
-                return;
-
-            // Never let a laptop-only layout (e.g. while undocked) overwrite a full multi-monitor snapshot.
-            var previous = Snapshot.Load(Storage.SnapshotPath);
-            if (previous is not null && Monitors.GetOrdered().Count < previous.MonitorCount)
+            if (_pendingCheck || !_secondPassDone || DateTime.Now < _quietUntil || !CanSave(out _))
                 return;
 
             SaveNow("autosave", quiet: true);
@@ -179,7 +190,7 @@ internal sealed class TrayAgent : ApplicationContext
             try
             {
                 var snapshot = WindowCapture.Capture(reason);
-                snapshot.Save(Storage.SnapshotPath);
+                snapshot.Save();
                 if (!quiet)
                     Storage.Log($"Saved {snapshot.Windows.Count} window(s) on {snapshot.MonitorCount} monitor(s) [{reason}].");
             }
@@ -190,25 +201,31 @@ internal sealed class TrayAgent : ApplicationContext
         }
     }
 
-    private void RestoreNow(string reason, bool notifyOnlyIfMoved = false)
+    /// <param name="missingSnapshotIsNormal">
+    /// True for automatic restores: the first time a monitor setup is seen there is nothing saved for it yet,
+    /// so autosave starts recording it instead of warning.
+    /// </param>
+    private void RestoreNow(string reason, bool notifyOnlyIfChanged = false, bool missingSnapshotIsNormal = false)
     {
         lock (_sync)
         {
             try
             {
-                var snapshot = Snapshot.Load(Storage.SnapshotPath);
+                var count = Monitors.GetOrdered().Count;
+                var snapshot = Snapshot.Load(Storage.SnapshotPath(count));
                 if (snapshot is null)
                 {
-                    Storage.Log("Nothing to restore: no snapshot saved yet.");
-                    Notify("Window positions not restored", "No snapshot saved yet.", ToolTipIcon.Warning);
+                    Storage.Log($"Nothing to restore [{reason}]: no snapshot saved yet for {MonitorsText(count)}.");
+                    if (!missingSnapshotIsNormal)
+                        Notify("Window positions not restored", $"No snapshot saved yet for {MonitorsText(count)}.", ToolTipIcon.Warning);
                     return;
                 }
 
                 var result = WindowRestore.Restore(snapshot, Storage.Log);
-                Storage.Log($"{result.Summary} from snapshot of {snapshot.SavedAt:g} [{reason}].");
+                Storage.Log($"{result.Summary} from {MonitorsText(snapshot.MonitorCount)} snapshot of {snapshot.SavedAt:g} [{reason}].");
                 _quietUntil = DateTime.Now + TimeSpan.FromMinutes(1);
 
-                if (!notifyOnlyIfMoved || result.MovedApps.Count > 0)
+                if (!notifyOnlyIfChanged || result.ChangedAnything)
                     NotifyRestore(reason, snapshot, result);
             }
             catch (Exception ex)
@@ -221,21 +238,24 @@ internal sealed class TrayAgent : ApplicationContext
 
     private void NotifyRestore(string reason, Snapshot snapshot, WindowRestore.Result result)
     {
-        var title = result.MovedApps.Count == 0
-            ? $"Window positions checked ({reason})"
-            : $"Window positions restored ({reason})";
+        var title = result.ChangedAnything
+            ? $"Window positions restored ({reason})"
+            : $"Window positions checked ({reason})";
 
         var apps = result.MovedApps
             .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.Count() > 1 ? $"{g.Key} ×{g.Count()}" : g.Key)
             .ToList();
         var appsLine = apps.Count == 0
-            ? "Everything was already in place."
-            : string.Join(", ", apps.Take(6)) + (apps.Count > 6 ? $" +{apps.Count - 6} more" : "");
+            ? result.ChangedAnything ? "" : "Everything was already in place.\n"
+            : string.Join(", ", apps.Take(6)) + (apps.Count > 6 ? $" +{apps.Count - 6} more" : "") + "\n";
+        var taskbarLine = result.TaskbarGroupsReordered > 0
+            ? $"Taskbar order fixed for {result.TaskbarGroupsReordered} app(s)\n"
+            : "";
 
         var text = $"Moved {result.MovedApps.Count} of {result.Restored} window(s)\n" +
                    $"Skipped {result.Skipped}, failed {result.Failed}\n" +
-                   $"{appsLine}\nSnapshot: {snapshot.SavedAt:g} ({snapshot.Reason})";
+                   $"{appsLine}{taskbarLine}Snapshot: {MonitorsText(snapshot.MonitorCount)}, {snapshot.SavedAt:g} ({snapshot.Reason})";
         Notify(title, text, result.Failed > 0 ? ToolTipIcon.Warning : ToolTipIcon.Info);
     }
 
